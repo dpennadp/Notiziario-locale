@@ -4,20 +4,20 @@ import html
 import re
 import time
 import urllib.request
+import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
 import edge_tts
-import feedparser
 
-# --- CONFIGURAZIONE FONTI UFFICIALI (Senza blocchi anti-bot) ---
+# --- CONFIGURAZIONE FONTI UFFICIALI ---
 FEED_URLS = [
     "https://ansa.it",
     "https://ansa.it",
     "https://ansa.it",
+    "https://ilpost.it",
 ]
 
 VOCE = "it-IT-DiegoNeural"
 VELOCITA_VOCE = "+15%"
-PAUSA_TRA_NOTIZIE = "300ms"
 FILE_OUTPUT = "notiziario.mp3"
 
 DURATA_MASSIMA_SECONDI = 90
@@ -25,6 +25,8 @@ PAROLE_AL_SECONDO = 2.7
 
 
 def pulisci_testo(testo):
+  if not testo:
+    return ""
   testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
   testo = re.sub(r"\s+", " ", testo).strip()
@@ -35,41 +37,36 @@ def estrai_ultime_notizie(urls):
   articoli = []
   titoli_visti = set()
 
-  headers = {
-      "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-      )
-  }
+  headers = {"User-Agent": "Mozilla/5.0 (compatible; NotiziarioBot/1.0)"}
 
   for url in urls:
     try:
       req = urllib.request.Request(url, headers=headers)
       with urllib.request.urlopen(req, timeout=15) as response:
-        contenuto_xml = response.read()
-      feed = feedparser.parse(contenuto_xml)
-      print(f"Fonte {url} -> Trovati {len(feed.entries)} articoli")
+        xml_data = response.read()
+
+      root = ET.fromstring(xml_data)
+      items = root.findall(".//item")
+      print(f"Fonte {url} -> Trovati {len(items)} articoli")
+
+      for item in items:
+        titolo_el = item.find("title")
+        if titolo_el is None or not titolo_el.text:
+          continue
+
+        titolo_grezzo = pulisci_testo(titolo_el.text)
+        titolo = titolo_grezzo.split(" - ")[0].strip()
+
+        if not titolo or titolo.lower() in titoli_visti:
+          continue
+        titoli_visti.add(titolo.lower())
+
+        articoli.append(titolo)
+
     except Exception as e:
       print(f"Errore su {url}: {e}")
       continue
 
-    for entry in feed.entries:
-      titolo_grezzo = pulisci_testo(getattr(entry, "title", ""))
-      # Prende solo la prima parte del titolo prima di eventuali trattini
-      titolo = titolo_grezzo.split(" - ")[0].strip()
-
-      if not titolo or titolo.lower() in titoli_visti:
-        continue
-      titoli_visti.add(titolo.lower())
-
-      data_pub = getattr(entry, "published_parsed", None) or getattr(
-          entry, "updated_parsed", None
-      )
-      timestamp = time.mktime(data_pub) if data_pub else 0
-
-      articoli.append({"titolo": titolo, "timestamp": timestamp})
-
-  articoli.sort(key=lambda x: x["timestamp"], reverse=True)
   return articoli
 
 
@@ -102,8 +99,8 @@ async def crea_audio():
 
   ultime_notizie = estrai_ultime_notizie(FEED_URLS)
 
-  for articolo in ultime_notizie:
-    titolo_pulito = articolo["titolo"].rstrip(".")
+  for titolo in ultime_notizie:
+    titolo_pulito = titolo.rstrip(".")
     frase_notizia = f"{titolo_pulito}."
     parole_frase = len(frase_notizia.split())
 
@@ -119,11 +116,11 @@ async def crea_audio():
 
   copione.append(chiusura)
 
-  pausa_ssml = f' <break time="{PAUSA_TRA_NOTIZIE}"/> '
-  testo_finale = pausa_ssml.join(copione)
+  # Unisce le frasi con un semplice spazio per una pausa minima e naturale
+  testo_finale = " ".join(copione)
 
   print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
-  print("Testo finale:\n", " ".join(copione))
+  print("Testo finale:\n", testo_finale)
 
   comunicazione = edge_tts.Communicate(
       testo_finale, VOCE, rate=VELOCITA_VOCE
