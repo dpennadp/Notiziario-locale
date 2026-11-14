@@ -22,18 +22,14 @@ FEED_URLS = [
 
 VOCE = "it-IT-DiegoNeural"  # Oppure "it-IT-ElsaNeural" per voce femminile
 VELOCITA_VOCE = "+15%"
-PAUSA_TRA_NOTIZIE = (
-    "300ms"  # Pausa dimezzata e serrata (puoi scendere a "200ms" o salire a"
-    " "400ms")
-)
 FILE_OUTPUT = "notiziario.mp3"
 
 DURATA_MASSIMA_SECONDI = 90
-PAROLE_AL_SECONDO = 2.7  # Aumentato leggermente grazie alle pause più brevi
+PAROLE_AL_SECONDO = 2.7
 
 
 def pulisci_testo(testo):
-  testo = html.unescape(testo)  # Converte eventuali simboli HTML (es. &quot;)
+  testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
   testo = re.sub(r"\s+", " ", testo).strip()
   return testo
@@ -111,7 +107,6 @@ async def crea_audio():
   ultime_notizie = estrai_ultime_notizie(FEED_URLS)
 
   for articolo in ultime_notizie:
-    # Rimuove eventuali punti finali doppi prima di aggiungere il punto
     titolo_pulito = articolo["titolo"].rstrip(".")
     frase_notizia = f"{titolo_pulito}."
     parole_frase = len(frase_notizia.split())
@@ -128,12 +123,11 @@ async def crea_audio():
 
   copione.append(chiusura)
 
-  # Unisce le frasi su una sola riga con una pausa breve di 300 millisecondi
-  pausa_ssml = f' <break time="{PAUSA_TRA_NOTIZIE}"/> '
-  testo_finale = pausa_ssml.join(copione)
+  # Unisce le frasi su una sola riga: pausa breve naturale da punto fermo
+  testo_finale = " ".join(copione)
 
   print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
-  print("Testo finale:\n", " ".join(copione))
+  print("Testo finale:\n", testo_finale)
 
   comunicazione = edge_tts.Communicate(
       testo_finale, VOCE, rate=VELOCITA_VOCE
