@@ -6,13 +6,13 @@ import subprocess
 from zoneinfo import ZoneInfo
 import edge_tts
 
-# --- CONFIGURAZIONE RICERCHE NOTIZIE LOCALI ---
-BASE_GNEWS = "https://" + "://google.com"
-
-RICERCHE_GOOGLE_NEWS = [
-    BASE_GNEWS + "search?q=Piacenza+when:1d&hl=it&gl=IT&ceid=IT:it",
-    BASE_GNEWS + "search?q=Emilia+Romagna+when:1d&hl=it&gl=IT&ceid=IT:it",
-    BASE_GNEWS + "headlines/section/topic/NATION?hl=it&gl=IT&ceid=IT:it",
+# --- FONTI RSS AD ALTA AFFIDABILITÀ PER SERVER CLOUD ---
+FONTI_RSS = [
+    "https://" + "www.rainews.it/rss/tutti",
+    "https://" + "www.tgcom24.mediaset.it/rss/ultimissime.xml",
+    "https://" + "://adnkronos.com",
+    "https://" + "www.ansa.it/emiliaromagna/notizie/emiliaromagna_rss.xml",
+    "https://" + "www.ansa.it/lombardia/notizie/lombardia_rss.xml",
 ]
 
 VOCE = "it-IT-DiegoNeural"
@@ -40,7 +40,15 @@ def estrai_ultime_notizie(urls):
   for url in urls:
     try:
       risultato = subprocess.run(
-          ["curl", "-s", "-L", "-A", "Mozilla/5.0", url],
+          [
+              "curl",
+              "-s",
+              "-L",
+              "--compressed",
+              "-A",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126.0.0.0",
+              url,
+          ],
           capture_output=True,
           text=True,
           timeout=15,
@@ -50,9 +58,15 @@ def estrai_ultime_notizie(urls):
       items = re.findall(
           r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL
       )
-      print(f"Trovati {len(items)} articoli da {url}")
+      print(
+          f"URL: {url} | Lunghezza risposta: {len(testo_grezzo)} caratteri |"
+          f" Articoli: {len(items)}"
+      )
 
-      for item in items[:5]:
+      if len(items) == 0 and len(testo_grezzo) > 0:
+        print(f"Anteprima risposta bloccata: {testo_grezzo[:150]}")
+
+      for item in items[:4]:
         match_titolo = re.search(
             r"<title\b[^>]*>(.*?)</title>", item, flags=re.DOTALL
         )
@@ -102,7 +116,7 @@ async def crea_audio():
   copione = [intro]
   notizie_raccolte = 0
 
-  ultime_notizie = estrai_ultime_notizie(RICERCHE_GOOGLE_NEWS)
+  ultime_notizie = estrai_ultime_notizie(FONTI_RSS)
 
   for titolo in ultime_notizie:
     titolo_pulito = titolo.rstrip(".")
