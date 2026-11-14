@@ -1,22 +1,17 @@
 import asyncio
 import datetime
 import html
-import json
 import re
-import urllib.parse
-import urllib.request
+import subprocess
 from zoneinfo import ZoneInfo
 import edge_tts
 
-# --- CONFIGURAZIONE FONTI LOCALI (Tramite ponte anti-blocco) ---
-FEED_URLS = [
-    # Fonti locali Piacenza e Emilia-Romagna
-    "https://liberta.it",
-    "https://piacenzasera.it",
-    "https://ansa.it",
-    # Fonti locali Brescia e Lombardia (togli il # se vuoi includere anche queste)
-    # "https://giornaledibrescia.it",
-    # "https://ansa.it",
+# --- CONFIGURAZIONE RICERCHE NOTIZIE LOCALI ---
+# Puoi cambiare "Piacenza" con "Brescia" o qualsiasi altra città
+RICERCHE_GOOGLE_NEWS = [
+    "https://google.com",
+    "https://google.com",
+    "https://google.com",
 ]
 
 VOCE = "it-IT-DiegoNeural"
@@ -30,6 +25,7 @@ PAROLE_AL_SECONDO = 2.7
 def pulisci_testo(testo):
   if not testo:
     return ""
+  testo = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", testo, flags=re.DOTALL)
   testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
   testo = re.sub(r"\s+", " ", testo).strip()
@@ -40,23 +36,33 @@ def estrai_ultime_notizie(urls):
   articoli = []
   titoli_visti = set()
 
-  headers = {"User-Agent": "Mozilla/5.0"}
-
   for url in urls:
     try:
-      # Usa ://rss2json.com per aggirare il blocco dei server USA verso i siti italiani
-      url_codificato = urllib.parse.quote(url, safe="")
-      api_url = f"https://://rss2json.com/v1/api.json?rss_url={url_codificato}"
+      # Usa curl nativo di Ubuntu per scaricare i feed senza blocchi DNS o SSL
+      risultato = subprocess.run(
+          ["curl", "-s", "-L", "-A", "Mozilla/5.0", url],
+          capture_output=True,
+          text=True,
+          timeout=15,
+      )
+      testo_grezzo = risultato.stdout
 
-      req = urllib.request.Request(api_url, headers=headers)
-      with urllib.request.urlopen(req, timeout=15) as response:
-        dati = json.loads(response.read().decode("utf-8"))
-
-      items = dati.get("items", [])
-      print(f"Fonte {url} -> Trovati {len(items)} articoli")
+      items = re.findall(
+          r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL
+      )
+      print(f"Fonte {url[:45]}... -> Trovati {len(items)} articoli")
 
       for item in items[:5]:
-        titolo = pulisci_testo(item.get("title", ""))
+        match_titolo = re.search(
+            r"<title\b[^>]*>(.*?)</title>", item, flags=re.DOTALL
+        )
+        if not match_titolo:
+          continue
+
+        titolo_grezzo = pulisci_testo(match_titolo.group(1))
+        # Rimuove il nome del giornale in fondo al titolo (es. " - Libertà")
+        titolo = re.sub(r"\s+-\s+[^-]+$", "", titolo_grezzo).strip()
+
         if not titolo or titolo.lower() in titoli_visti:
           continue
 
@@ -97,7 +103,7 @@ async def crea_audio():
   copione = [intro]
   notizie_raccolte = 0
 
-  ultime_notizie = estrai_ultime_notizie(FEED_URLS)
+  ultime_notizie = estrai_ultime_notizie(RICERCHE_GOOGLE_NEWS)
 
   for titolo in ultime_notizie:
     titolo_pulito = titolo.rstrip(".")
