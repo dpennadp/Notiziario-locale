@@ -8,20 +8,16 @@ from zoneinfo import ZoneInfo
 import edge_tts
 import feedparser
 
-# --- CONFIGURAZIONE FONTI LOCALI DIRETTE ---
+# --- CONFIGURAZIONE FONTI UFFICIALI (Senza blocchi anti-bot) ---
 FEED_URLS = [
-    # Fonti Piacenza e Emilia-Romagna
-    "https://liberta.it",
-    "https://piacenzasera.it",
     "https://ansa.it",
-    # Se preferisci Brescia e Lombardia, metti # davanti alle 3 righe sopra e toglilo qui sotto:
-    # "https://giornaledibrescia.it",
-    # "https://bresciaoggi.it",
-    # "https://ansa.it"
+    "https://ansa.it",
+    "https://ansa.it",
 ]
 
-VOCE = "it-IT-DiegoNeural"  # Oppure "it-IT-ElsaNeural" per voce femminile
+VOCE = "it-IT-DiegoNeural"
 VELOCITA_VOCE = "+15%"
+PAUSA_TRA_NOTIZIE = "300ms"
 FILE_OUTPUT = "notiziario.mp3"
 
 DURATA_MASSIMA_SECONDI = 90
@@ -43,8 +39,7 @@ def estrai_ultime_notizie(urls):
       "User-Agent": (
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
           " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-      ),
-      "Accept": "application/rss+xml, application/xml, text/xml, */*",
+      )
   }
 
   for url in urls:
@@ -60,6 +55,7 @@ def estrai_ultime_notizie(urls):
 
     for entry in feed.entries:
       titolo_grezzo = pulisci_testo(getattr(entry, "title", ""))
+      # Prende solo la prima parte del titolo prima di eventuali trattini
       titolo = titolo_grezzo.split(" - ")[0].strip()
 
       if not titolo or titolo.lower() in titoli_visti:
@@ -95,7 +91,7 @@ async def crea_audio():
   else:
     saluto = "Buonasera dalla redazione"
 
-  intro = f"{saluto}. Ecco le ultime notizie locali delle ore {ora_formattata}."
+  intro = f"{saluto}. Ecco le ultime notizie delle ore {ora_formattata}."
   chiusura = "Il notiziario termina qui. La prossima edizione tra un'ora!"
 
   parole_massime = int(DURATA_MASSIMA_SECONDI * PAROLE_AL_SECONDO)
@@ -123,11 +119,11 @@ async def crea_audio():
 
   copione.append(chiusura)
 
-  # Unisce le frasi su una sola riga: pausa breve naturale da punto fermo
-  testo_finale = " ".join(copione)
+  pausa_ssml = f' <break time="{PAUSA_TRA_NOTIZIE}"/> '
+  testo_finale = pausa_ssml.join(copione)
 
   print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
-  print("Testo finale:\n", testo_finale)
+  print("Testo finale:\n", " ".join(copione))
 
   comunicazione = edge_tts.Communicate(
       testo_finale, VOCE, rate=VELOCITA_VOCE
