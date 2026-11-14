@@ -1,17 +1,22 @@
 import asyncio
 import datetime
 import html
+import json
 import re
+import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 import edge_tts
 
-# --- CONFIGURAZIONE FONTI UFFICIALI ---
+# --- CONFIGURAZIONE FONTI LOCALI (Tramite ponte anti-blocco) ---
 FEED_URLS = [
+    # Fonti locali Piacenza e Emilia-Romagna
+    "https://liberta.it",
+    "https://piacenzasera.it",
     "https://ansa.it",
-    "https://ansa.it",
-    "https://ansa.it",
-    "https://ilpost.it",
+    # Fonti locali Brescia e Lombardia (togli il # se vuoi includere anche queste)
+    # "https://giornaledibrescia.it",
+    # "https://ansa.it",
 ]
 
 VOCE = "it-IT-DiegoNeural"
@@ -25,7 +30,6 @@ PAROLE_AL_SECONDO = 2.7
 def pulisci_testo(testo):
   if not testo:
     return ""
-  testo = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", testo, flags=re.DOTALL)
   testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
   testo = re.sub(r"\s+", " ", testo).strip()
@@ -36,29 +40,23 @@ def estrai_ultime_notizie(urls):
   articoli = []
   titoli_visti = set()
 
-  headers = {
-      "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          " (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
-      )
-  }
+  headers = {"User-Agent": "Mozilla/5.0"}
 
   for url in urls:
     try:
-      req = urllib.request.Request(url, headers=headers)
-      with urllib.request.urlopen(req, timeout=15) as response:
-        testo_grezzo = response.read().decode("utf-8", errors="ignore")
+      # Usa ://rss2json.com per aggirare il blocco dei server USA verso i siti italiani
+      url_codificato = urllib.parse.quote(url, safe="")
+      api_url = f"https://://rss2json.com/v1/api.json?rss_url={url_codificato}"
 
-      # Estrae i titoli ignorando gli errori di sintassi XML di ANSA e Il Post
-      items = re.findall(r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL)
+      req = urllib.request.Request(api_url, headers=headers)
+      with urllib.request.urlopen(req, timeout=15) as response:
+        dati = json.loads(response.read().decode("utf-8"))
+
+      items = dati.get("items", [])
       print(f"Fonte {url} -> Trovati {len(items)} articoli")
 
       for item in items[:5]:
-        match_titolo = re.search(r"<title\b[^>]*>(.*?)</title>", item, flags=re.DOTALL)
-        if not match_titolo:
-          continue
-
-        titolo = pulisci_testo(match_titolo.group(1))
+        titolo = pulisci_testo(item.get("title", ""))
         if not titolo or titolo.lower() in titoli_visti:
           continue
 
