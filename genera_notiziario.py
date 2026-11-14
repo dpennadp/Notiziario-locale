@@ -7,11 +7,12 @@ from zoneinfo import ZoneInfo
 import edge_tts
 
 # --- CONFIGURAZIONE RICERCHE NOTIZIE LOCALI ---
-# Puoi cambiare "Piacenza" con "Brescia" o qualsiasi altra città
+BASE_GNEWS = "https://" + "://google.com"
+
 RICERCHE_GOOGLE_NEWS = [
-    "https://google.com",
-    "https://google.com",
-    "https://google.com",
+    BASE_GNEWS + "search?q=Piacenza+when:1d&hl=it&gl=IT&ceid=IT:it",
+    BASE_GNEWS + "search?q=Emilia+Romagna+when:1d&hl=it&gl=IT&ceid=IT:it",
+    BASE_GNEWS + "headlines/section/topic/NATION?hl=it&gl=IT&ceid=IT:it",
 ]
 
 VOCE = "it-IT-DiegoNeural"
@@ -38,7 +39,6 @@ def estrai_ultime_notizie(urls):
 
   for url in urls:
     try:
-      # Usa curl nativo di Ubuntu per scaricare i feed senza blocchi DNS o SSL
       risultato = subprocess.run(
           ["curl", "-s", "-L", "-A", "Mozilla/5.0", url],
           capture_output=True,
@@ -50,7 +50,7 @@ def estrai_ultime_notizie(urls):
       items = re.findall(
           r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL
       )
-      print(f"Fonte {url[:45]}... -> Trovati {len(items)} articoli")
+      print(f"Trovati {len(items)} articoli da {url}")
 
       for item in items[:5]:
         match_titolo = re.search(
@@ -60,7 +60,6 @@ def estrai_ultime_notizie(urls):
           continue
 
         titolo_grezzo = pulisci_testo(match_titolo.group(1))
-        # Rimuove il nome del giornale in fondo al titolo (es. " - Libertà")
         titolo = re.sub(r"\s+-\s+[^-]+$", "", titolo_grezzo).strip()
 
         if not titolo or titolo.lower() in titoli_visti:
