@@ -87,8 +87,8 @@ async def crea_audio():
   else:
     saluto = "Buonasera dalla redazione"
 
-  intro = f"{saluto}. Ecco le ultime notizie delle ore {ora_formattata}."
-  chiusura = "Il notiziario termina qui. La prossima edizione tra un'ora!"
+  intro = f"{saluto}. Ecco le notizie delle ore {ora_formattata}."
+  chiusura = "Il notiziario termina qui, la prossima edizione tra un'ora!"
 
   parole_massime = int(DURATA_MASSIMA_SECONDI * PAROLE_AL_SECONDO)
   parole_usate = len(intro.split()) + len(chiusura.split())
