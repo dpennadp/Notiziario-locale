@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import html
 import re
-import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from zoneinfo import ZoneInfo
@@ -55,7 +54,7 @@ def estrai_ultime_notizie(urls):
           continue
 
         titolo_grezzo = pulisci_testo(titolo_el.text)
-        titolo = titolo_grezzo.split(" - ")[0].strip()
+        titolo = titolo_grezzo.strip()
 
         if not titolo or titolo.lower() in titoli_visti:
           continue
@@ -116,7 +115,6 @@ async def crea_audio():
 
   copione.append(chiusura)
 
-  # Unisce le frasi con un semplice spazio per una pausa minima e naturale
   testo_finale = " ".join(copione)
 
   print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
