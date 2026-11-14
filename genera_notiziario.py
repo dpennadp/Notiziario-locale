@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import html
 import re
 import time
 import urllib.request
@@ -7,24 +8,32 @@ from zoneinfo import ZoneInfo
 import edge_tts
 import feedparser
 
-# --- CONFIGURAZIONE FONTI LOCALI ---
+# --- CONFIGURAZIONE FONTI LOCALI DIRETTE ---
 FEED_URLS = [
-    "https://google.com",
+    # Fonti Piacenza e Emilia-Romagna
+    "https://liberta.it",
+    "https://piacenzasera.it",
     "https://ansa.it",
+    # Se preferisci Brescia e Lombardia, metti # davanti alle 3 righe sopra e toglilo qui sotto:
+    # "https://giornaledibrescia.it",
+    # "https://bresciaoggi.it",
+    # "https://ansa.it"
 ]
 
 VOCE = "it-IT-DiegoNeural"  # Oppure "it-IT-ElsaNeural" per voce femminile
-VELOCITA_VOCE = (
-    "+15%"  # Ritmo radiofonico (+15% più veloce rispetto al parlato lento)
+VELOCITA_VOCE = "+15%"
+PAUSA_TRA_NOTIZIE = (
+    "300ms"  # Pausa dimezzata e serrata (puoi scendere a "200ms" o salire a"
+    " "400ms")
 )
 FILE_OUTPUT = "notiziario.mp3"
 
-# Durata massima desiderata in secondi (90 = 1 minuto e mezzo)
 DURATA_MASSIMA_SECONDI = 90
-PAROLE_AL_SECONDO = 2.6  # Aggiornato per la nuova velocità di lettura
+PAROLE_AL_SECONDO = 2.7  # Aumentato leggermente grazie alle pause più brevi
 
 
 def pulisci_testo(testo):
+  testo = html.unescape(testo)  # Converte eventuali simboli HTML (es. &quot;)
   testo = re.sub(r"<[^>]+>", "", testo)
   testo = re.sub(r"\s+", " ", testo).strip()
   return testo
@@ -34,12 +43,12 @@ def estrai_ultime_notizie(urls):
   articoli = []
   titoli_visti = set()
 
-  # Simula un browser reale per evitare che Google News o ANSA blocchino GitHub
   headers = {
       "User-Agent": (
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      )
+          " (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+      ),
+      "Accept": "application/rss+xml, application/xml, text/xml, */*",
   }
 
   for url in urls:
@@ -48,19 +57,22 @@ def estrai_ultime_notizie(urls):
       with urllib.request.urlopen(req, timeout=15) as response:
         contenuto_xml = response.read()
       feed = feedparser.parse(contenuto_xml)
+      print(f"Fonte {url} -> Trovati {len(feed.entries)} articoli")
     except Exception as e:
-      print(f"Errore nel caricamento di {url}: {e}")
+      print(f"Errore su {url}: {e}")
       continue
 
     for entry in feed.entries:
-      titolo_grezzo = pulisci_testo(entry.title)
+      titolo_grezzo = pulisci_testo(getattr(entry, "title", ""))
       titolo = titolo_grezzo.split(" - ")[0].strip()
 
       if not titolo or titolo.lower() in titoli_visti:
         continue
       titoli_visti.add(titolo.lower())
 
-      data_pub = getattr(entry, "published_parsed", None)
+      data_pub = getattr(entry, "published_parsed", None) or getattr(
+          entry, "updated_parsed", None
+      )
       timestamp = time.mktime(data_pub) if data_pub else 0
 
       articoli.append({"titolo": titolo, "timestamp": timestamp})
@@ -99,8 +111,9 @@ async def crea_audio():
   ultime_notizie = estrai_ultime_notizie(FEED_URLS)
 
   for articolo in ultime_notizie:
-    # Rimosso "Notizia:" ripetitivo per un ritmo più scorrevole da vero GR
-    frase_notizia = f"{articolo['titolo']}."
+    # Rimuove eventuali punti finali doppi prima di aggiungere il punto
+    titolo_pulito = articolo["titolo"].rstrip(".")
+    frase_notizia = f"{titolo_pulito}."
     parole_frase = len(frase_notizia.split())
 
     if parole_usate + parole_frase <= parole_massime:
@@ -115,13 +128,12 @@ async def crea_audio():
 
   copione.append(chiusura)
 
-  # Unisce le frasi con un solo spazio e a capo: pausa breve e naturale
-  testo_finale = "\n".join(copione)
-  print(
-      f"Notiziario ore {ora_formattata} | Notizie trovate: {notizie_raccolte} |"
-      f" Parole: {parole_usate}"
-  )
-  print("Testo:\n", testo_finale)
+  # Unisce le frasi su una sola riga con una pausa breve di 300 millisecondi
+  pausa_ssml = f' <break time="{PAUSA_TRA_NOTIZIE}"/> '
+  testo_finale = pausa_ssml.join(copione)
+
+  print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
+  print("Testo finale:\n", " ".join(copione))
 
   comunicazione = edge_tts.Communicate(
       testo_finale, VOCE, rate=VELOCITA_VOCE
