@@ -1,0 +1,35 @@
+name: Aggiorna Notiziario Ogni Ora
+
+on:
+  schedule:
+    - cron: '50 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scarica repository
+        uses: actions/checkout@v4
+
+      - name: Imposta Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa librerie
+        run: pip install feedparser edge-tts
+
+      - name: Genera MP3
+        run: python genera_notiziario.py
+
+      - name: Salva il file audio nel repository
+        run: |
+          git config --global user.name "Notiziario Bot"
+          git config --global user.email "bot@://github.com"
+          git add notiziario.mp3
+          git commit -m "Aggiornamento orario notiziario" || exit 0
+          git push
