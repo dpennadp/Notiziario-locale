@@ -6,11 +6,9 @@ import subprocess
 from zoneinfo import ZoneInfo
 import edge_tts
 
-# --- FONTI RSS AD ALTA AFFIDABILITÀ PER SERVER CLOUD ---
+# --- CONFIGURAZIONE FONTI UFFICIALI ---
 FONTI_RSS = [
     "https://" + "www.rainews.it/rss/tutti",
-    "https://" + "www.tgcom24.mediaset.it/rss/ultimissime.xml",
-    "https://" + "://adnkronos.com",
     "https://" + "www.ansa.it/emiliaromagna/notizie/emiliaromagna_rss.xml",
     "https://" + "www.ansa.it/lombardia/notizie/lombardia_rss.xml",
 ]
@@ -19,6 +17,7 @@ VOCE = "it-IT-DiegoNeural"
 VELOCITA_VOCE = "+15%"
 FILE_OUTPUT = "notiziario.mp3"
 
+# Durata massima in secondi (90s = circa 4-5 notizie complete di riassunto)
 DURATA_MASSIMA_SECONDI = 90
 PAROLE_AL_SECONDO = 2.7
 
@@ -29,6 +28,18 @@ def pulisci_testo(testo):
   testo = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", testo, flags=re.DOTALL)
   testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
+
+  # Uniforma apostrofi e rimuove virgolette che disturbano la voce
+  testo = testo.replace("’", "'").replace("‘", "'")
+  testo = testo.replace('"', "").replace("“", "").replace("”", "")
+  testo = testo.replace("«", "").replace("»", "")
+  testo = re.sub(r"(^|\s)'([^']+)'(\s|$|[.,;:!?])", r"\1\2\3", testo)
+
+  # Correzioni fonetiche
+  testo = testo.replace("//", " ")
+  testo = re.sub(r"\bXi\b", "Sci", testo)
+  testo = re.sub(r"\(ANSA\)", "", testo, flags=re.IGNORECASE)
+
   testo = re.sub(r"\s+", " ", testo).strip()
   return testo
 
@@ -54,17 +65,9 @@ def estrai_ultime_notizie(urls):
           timeout=15,
       )
       testo_grezzo = risultato.stdout
-
       items = re.findall(
           r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL
       )
-      print(
-          f"URL: {url} | Lunghezza risposta: {len(testo_grezzo)} caratteri |"
-          f" Articoli: {len(items)}"
-      )
-
-      if len(items) == 0 and len(testo_grezzo) > 0:
-        print(f"Anteprima risposta bloccata: {testo_grezzo[:150]}")
 
       for item in items[:4]:
         match_titolo = re.search(
@@ -73,14 +76,29 @@ def estrai_ultime_notizie(urls):
         if not match_titolo:
           continue
 
-        titolo_grezzo = pulisci_testo(match_titolo.group(1))
-        titolo = re.sub(r"\s+-\s+[^-]+$", "", titolo_grezzo).strip()
-
+        titolo = pulisci_testo(match_titolo.group(1)).rstrip(".")
         if not titolo or titolo.lower() in titoli_visti:
           continue
 
+        # Estrae anche il riassunto (<description>) per dare corpo alla notizia
+        match_desc = re.search(
+            r"<description\b[^>]*>(.*?)</description>", item, flags=re.DOTALL
+        )
+        descrizione = ""
+        if match_desc:
+          descrizione = pulisci_testo(match_desc.group(1)).rstrip(".")
+          # Evita di ripetere la descrizione se è identica al titolo
+          if descrizione.lower().startswith(titolo.lower()):
+            descrizione = descrizione[len(titolo) :].lstrip(" .:-").strip()
+
         titoli_visti.add(titolo.lower())
-        articoli.append(titolo)
+
+        if descrizione and len(descrizione) > 15:
+          notizia_completa = f"{titolo}. {descrizione}."
+        else:
+          notizia_completa = f"{titolo}."
+
+        articoli.append(notizia_completa)
 
     except Exception as e:
       print(f"Errore su {url}: {e}")
@@ -118,13 +136,11 @@ async def crea_audio():
 
   ultime_notizie = estrai_ultime_notizie(FONTI_RSS)
 
-  for titolo in ultime_notizie:
-    titolo_pulito = titolo.rstrip(".")
-    frase_notizia = f"{titolo_pulito}."
-    parole_frase = len(frase_notizia.split())
+  for notizia in ultime_notizie:
+    parole_frase = len(notizia.split())
 
     if parole_usate + parole_frase <= parole_massime:
-      copione.append(frase_notizia)
+      copione.append(notizia)
       parole_usate += parole_frase
       notizie_raccolte += 1
     else:
@@ -137,7 +153,7 @@ async def crea_audio():
 
   testo_finale = " ".join(copione)
 
-  print(f"Totale notizie inserite nel GR: {notizie_raccolte}")
+  print(f"Totale notizie approfondite nel GR: {notizie_raccolte}")
   print("Testo finale:\n", testo_finale)
 
   comunicazione = edge_tts.Communicate(
