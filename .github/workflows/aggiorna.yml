@@ -24,3 +24,9 @@ jobs:
           git add notiziario.mp3 feed.xml
           git commit -m "Audio e Feed" || exit 0
           git push
+      - name: Pubblica su GitHub Releases (Content-Type esatto per Xdevel)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: live
+          name: Edizione Oraria
+          files: notiziario.mp3
