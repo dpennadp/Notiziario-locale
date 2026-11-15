@@ -1,6 +1,8 @@
 import asyncio
 import datetime
+import email.utils
 import html
+import os
 import re
 import subprocess
 from zoneinfo import ZoneInfo
@@ -16,8 +18,9 @@ FONTI_RSS = [
 VOCE = "it-IT-DiegoNeural"
 VELOCITA_VOCE = "+15%"
 FILE_OUTPUT = "notiziario.mp3"
+FILE_FEED = "feed.xml"
+URL_BASE = "https://github.io"
 
-# Durata massima in secondi (90s = circa 4-5 notizie complete di riassunto)
 DURATA_MASSIMA_SECONDI = 90
 PAROLE_AL_SECONDO = 2.7
 
@@ -28,18 +31,13 @@ def pulisci_testo(testo):
   testo = re.sub(r"<!\[CDATA\[(.*?)\]\]>", r"\1", testo, flags=re.DOTALL)
   testo = html.unescape(testo)
   testo = re.sub(r"<[^>]+>", "", testo)
-
-  # Uniforma apostrofi e rimuove virgolette che disturbano la voce
   testo = testo.replace("’", "'").replace("‘", "'")
   testo = testo.replace('"', "").replace("“", "").replace("”", "")
   testo = testo.replace("«", "").replace("»", "")
   testo = re.sub(r"(^|\s)'([^']+)'(\s|$|[.,;:!?])", r"\1\2\3", testo)
-
-  # Correzioni fonetiche
   testo = testo.replace("//", " ")
   testo = re.sub(r"\bXi\b", "Sci", testo)
   testo = re.sub(r"\(ANSA\)", "", testo, flags=re.IGNORECASE)
-
   testo = re.sub(r"\s+", " ", testo).strip()
   return testo
 
@@ -64,9 +62,8 @@ def estrai_ultime_notizie(urls):
           text=True,
           timeout=15,
       )
-      testo_grezzo = risultato.stdout
       items = re.findall(
-          r"<item\b[^>]*>(.*?)</item>", testo_grezzo, flags=re.DOTALL
+          r"<item\b[^>]*>(.*?)</item>", risultato.stdout, flags=re.DOTALL
       )
 
       for item in items[:4]:
@@ -80,31 +77,55 @@ def estrai_ultime_notizie(urls):
         if not titolo or titolo.lower() in titoli_visti:
           continue
 
-        # Estrae anche il riassunto (<description>) per dare corpo alla notizia
         match_desc = re.search(
             r"<description\b[^>]*>(.*?)</description>", item, flags=re.DOTALL
         )
         descrizione = ""
         if match_desc:
           descrizione = pulisci_testo(match_desc.group(1)).rstrip(".")
-          # Evita di ripetere la descrizione se è identica al titolo
           if descrizione.lower().startswith(titolo.lower()):
             descrizione = descrizione[len(titolo) :].lstrip(" .:-").strip()
 
         titoli_visti.add(titolo.lower())
 
         if descrizione and len(descrizione) > 15:
-          notizia_completa = f"{titolo}. {descrizione}."
+          articoli.append(f"{titolo}. {descrizione}.")
         else:
-          notizia_completa = f"{titolo}."
-
-        articoli.append(notizia_completa)
+          articoli.append(f"{titolo}.")
 
     except Exception as e:
       print(f"Errore su {url}: {e}")
       continue
 
   return articoli
+
+
+def genera_feed_rss(adesso, ora_formattata):
+  dimensione_byte = os.path.getsize(FILE_OUTPUT)
+  data_rfc2822 = email.utils.format_datetime(adesso)
+  id_univoco = adesso.strftime("%Y%m%d%H%M")
+  url_mp3 = f"{URL_BASE}/{FILE_OUTPUT}?v={id_univoco}"
+
+  xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://itunes.com">
+  <channel>
+    <title>Notiziario Locale</title>
+    <link>{URL_BASE}/</link>
+    <description>Edizione oraria delle notizie locali</description>
+    <language>it-it</language>
+    <lastBuildDate>{data_rfc2822}</lastBuildDate>
+    <item>
+      <title>Notiziario delle ore {ora_formattata}</title>
+      <guid isPermaLink="false">notiziario-{id_univoco}</guid>
+      <pubDate>{data_rfc2822}</pubDate>
+      <enclosure url="{url_mp3}" length="{dimensione_byte}" type="audio/mpeg" />
+    </item>
+  </channel>
+</rss>"""
+
+  with open(FILE_FEED, "w", encoding="utf-8") as f:
+    f.write(xml_content)
+  print("Feed RSS podcast generato con successo!")
 
 
 async def crea_audio():
@@ -134,11 +155,8 @@ async def crea_audio():
   copione = [intro]
   notizie_raccolte = 0
 
-  ultime_notizie = estrai_ultime_notizie(FONTI_RSS)
-
-  for notizia in ultime_notizie:
+  for notizia in estrai_ultime_notizie(FONTI_RSS):
     parole_frase = len(notizia.split())
-
     if parole_usate + parole_frase <= parole_massime:
       copione.append(notizia)
       parole_usate += parole_frase
@@ -150,16 +168,13 @@ async def crea_audio():
     copione.append("Al momento non ci sono nuovi aggiornamenti.")
 
   copione.append(chiusura)
-
   testo_finale = " ".join(copione)
-
-  print(f"Totale notizie approfondite nel GR: {notizie_raccolte}")
-  print("Testo finale:\n", testo_finale)
 
   comunicazione = edge_tts.Communicate(
       testo_finale, VOCE, rate=VELOCITA_VOCE
   )
   await comunicazione.save(FILE_OUTPUT)
+  genera_feed_rss(adesso, ora_formattata)
 
 
 if __name__ == "__main__":
