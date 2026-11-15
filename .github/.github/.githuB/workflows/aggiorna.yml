@@ -31,5 +31,6 @@ jobs:
           git config --global user.name "Notiziario Bot"
           git config --global user.email "bot@://github.com"
           git add notiziario.mp3
+          git commit -m "Audio e Feed" || exit 0 
           git commit -m "Aggiornamento orario notiziario" || exit 0
           git push
