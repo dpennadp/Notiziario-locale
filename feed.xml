@@ -5,12 +5,12 @@
     <link>https://github.io/</link>
     <description>Edizione oraria delle notizie locali</description>
     <language>it-it</language>
-    <lastBuildDate>Fri, 27 Nov 2026 12:30:23 +0100</lastBuildDate>
+    <lastBuildDate>Fri, 27 Nov 2026 13:39:46 +0100</lastBuildDate>
     <item>
-      <title>Notiziario delle ore 13:00</title>
-      <guid isPermaLink="false">notiziario-202611271230</guid>
-      <pubDate>Fri, 27 Nov 2026 12:30:23 +0100</pubDate>
-      <enclosure url="https://github.io/notiziario.mp3?v=202611271230" length="568224" type="audio/mpeg" />
+      <title>Notiziario delle ore 14:00</title>
+      <guid isPermaLink="false">notiziario-202611271339</guid>
+      <pubDate>Fri, 27 Nov 2026 13:39:46 +0100</pubDate>
+      <enclosure url="https://github.io/notiziario.mp3?v=202611271339" length="618768" type="audio/mpeg" />
     </item>
   </channel>
 </rss>
